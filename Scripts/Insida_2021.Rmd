@@ -1,0 +1,543 @@
+---
+title: "HIV key indicators 2021 - INSIDA"
+author: "Edmilson Filimone"
+---
+
+
+
+Packages
+```{r}
+pacman::p_load(survey, dplyr, flextable)
+
+```
+
+
+Data
+```{r}
+
+setwd("D:/Code/AIDS/PHIA/INSIDA")
+
+# Load in Adult Bio and Adult Ind datasets from CSVs
+adultbio <- read.csv("./Data/insida2021adultbio.csv", header = TRUE)
+adultind <- read.csv("./Data/insida2021adultind.csv", header = TRUE)
+
+
+variaveis_de_interesse = c(
+  "personid",
+  "pregnancystatus" ,
+  "workind_mz",
+  "married",
+  "wealthquintile",
+  "education",
+  "urban"
+)
+
+raw_data = left_join(adultbio, adultind[variaveis_de_interesse], by = "personid")
+raw_data
+
+```
+
+
+Recode Variables
+
+
+```{r}
+vars <- c(
+    'hivstatusfinal',
+    'vls',
+    'tri90',
+    'tri90aware',
+    'tri90art',
+    'tri90vls'
+  )
+
+raw_data <-  raw_data |>
+  mutate(
+    pregnancy = case_when(
+      pregnancystatus == 1 ~ "Yes",
+      pregnancystatus == 2 ~ "No",
+      TRUE ~ NA_character_),
+    
+    occupation =  factor(case_when(
+          workind_mz == 1  ~ "Mining",
+          workind_mz == 2  ~ "Agriculture/Farming",
+          workind_mz == 3  ~ "Transport",
+          #workind_mz == 4  ~ "Construction",
+          workind_mz == 5  ~ "Uniformed Personnel",
+          workind_mz == 6  ~ "Informal Trade",
+          #workind_mz == 7  ~ "Garment Industries",
+          workind_mz == 8  ~ "Housekeeper",
+          #workind_mz == 9  ~ "Sex Worker",
+          #workind_mz == 10 ~ "Student",
+          workind_mz == 11 ~ "Sales/Services",
+          workind_mz == 12 ~ "Teacher",
+          workind_mz == 13 ~ "Healthcare",
+          # workind_mz == 14 ~ "Clerical",
+          # workind_mz == 15 ~ "Unemployed",
+          # workind_mz == 16 ~ "Engineer/Tradesman",
+          # workind_mz == 17 ~ "Forestry/Landscaping",
+          # workind_mz == 18 ~ "Community Work/Social Services",
+          workind_mz == 96 ~ "Other",
+          TRUE ~ NA_character_
+        )),
+
+    
+    wealth_index = factor(case_when(
+      wealthquintile == 1 ~ "Poorest",
+      wealthquintile == 2 ~ "Poorer",
+      wealthquintile == 3 ~ "Middle",
+      wealthquintile == 4 ~ "Rich",
+      wealthquintile == 5 ~ "Richest",
+      TRUE ~ NA_character_
+    ), levels = c("Poorest","Poorer","Middle", "Rich", "Richest")),
+    
+    education = factor(case_when(
+      education == 1 ~ "No education",
+      education == 2 ~ "Primary",
+      education == 3 ~ "Secondary/above",
+      education == 4 ~ "Secondary/above",
+      TRUE ~ NA_character_),
+      levels = c("No education", "Primary", "Secondary/above")),
+    
+    sex = factor(case_when(
+      gender == 1 ~ "Male",
+      gender == 2 ~ "Female",
+      TRUE ~ NA_character_
+    )),
+    
+    area_of_residence = factor(case_when(
+      urban == 1 ~ "Urban",
+      urban == 2 ~ "Rural",
+      TRUE ~ NA_character_))
+    ,
+    marital_status =  factor(case_when(
+      married == 1 ~ "Never married",
+      married == 2 ~ "Married or living together",
+      married == 3 ~ "Divorced or separated",
+      married == 4 ~ "Widowed",
+      TRUE ~ NA_character_),
+      levels = c("Never married", "Married or living together", "Divorced or separated", "Widowed")),
+        
+    province = factor(case_when(
+        province == 1 ~ "Niassa",
+        province == 2 ~ "Cabo Delgado",
+        province == 3 ~ "Nampula",
+        province == 4 ~ "Zambezia",
+        province == 5 ~ "Tete",
+        province == 6 ~ "Manica",
+        province == 7 ~ "Sofala",
+        province == 8 ~ "Inhambane",
+        province == 9 ~ "Gaza",
+        province == 10 ~ "Maputo",
+        province == 11 ~ "Maputo City",
+        TRUE ~ NA_character_),
+levels = c("Niassa", "Cabo Delgado", "Nampula", "Zambezia", "Tete", "Manica", "Sofala", "Inhambane", "Gaza", "Maputo", "Maputo City")),
+
+age_group = factor(case_when(
+  age >= 15 & age <= 24 ~ "15-24",
+  age >= 25 & age <= 34 ~ "25-34",
+  age >= 35 & age <= 44 ~ "35-44",
+  age >= 45 & age <= 54 ~ "45-54",
+  age >= 55 ~ "55+"
+),
+levels = c("15-24","25-34","35-44","45-54","55+")),
+
+
+    recentlagvlarv = case_when(
+      recentlagvlarv == 1 ~ 1,
+      recentlagvlarv == 2 ~ 0,
+      TRUE ~ NA
+    ),
+
+    tri90 = case_when(
+      tri90 == 1 ~ 1,
+      tri90 == 2 ~ 0,
+      TRUE ~ NA_integer_
+    ),
+    
+    tri90art = case_when(
+      tri90art == 1 ~ 1,
+      tri90art == 2 ~ 0,
+      TRUE ~ NA_integer_
+    ),
+    tri90aware = case_when(
+      tri90aware == 1 ~ 1,
+      tri90aware == 2 ~ 0,
+      TRUE ~ NA_integer_
+    ),
+    
+    tri90vls = case_when(
+      tri90vls == 1 ~ 1,
+      tri90vls == 2 ~ 0,
+      TRUE ~ NA_integer_
+    ),
+    
+    vls = case_when(
+    vls == 1 ~ 1,
+    vls == 2 ~ 0,
+    TRUE ~ NA_integer_
+    ),
+    
+    hivstatusfinal = case_when(
+    hivstatusfinal == 1 ~ 1,
+    hivstatusfinal == 2 ~ 0,
+    TRUE ~ NA_integer_
+  )
+  )
+
+raw_data$pregnancy[raw_data$sex == "Male"] <- "No" #all man should have "no" for pregnancy
+
+raw_data
+
+
+
+
+```
+
+
+Analytics variable
+
+```{r}
+
+### Define analytic variables
+vars <- c(
+    'hivstatusfinal',
+    'vls',
+    'tri90',
+    'tri90aware',
+    'tri90art',
+    'tri90vls'
+  )
+
+
+characteristics = c(
+  "country",
+  "education",
+  "sex",
+  "pregnancy",
+  "wealth_index",
+  "occupation",
+  "area_of_residence",
+  "marital_status",
+  "age_group",
+  "province"
+)
+
+
+
+```
+
+
+
+Survey Design
+```{r}
+
+jkdesign <- svrepdesign(
+  variables = select(raw_data, -starts_with("btwt")),
+  weights = select(raw_data, btwt0),
+  repweights = select(raw_data, starts_with("btwt"), -btwt0),
+  type = "JKn", 
+  scale = 1, 
+  rscales = 1)
+
+
+tsdesign <- svydesign(
+  data = raw_data,
+  weights = ~btwt0,
+  strata = ~varstrat,
+  ids = ~varunit,
+  nest = TRUE
+)
+
+```
+
+Prevalence
+```{r}
+
+HIVp <- svyciprop(~vls,
+                  design = tsdesign,
+                  method = "beta",
+                  level = 0.95,
+                  df = 25)
+
+HIVp*100
+
+```
+
+```{}
+
+# Multiple Prevalence Estimation Function 
+
+prev_list <- list()
+
+make_prev_table <- function(outcome_variable ,variaveis, year, survey_data){
+  
+  for(category in variaveis){
+    valid_rows <- !is.na(survey_data$variables[, outcome_variable])             # Its important to remove NA of the response variables
+    sub.survey_data <- subset(survey_data, valid_rows)                          # This will remove NA of the response variable and weights 
+    
+    cat(category, "✔️\n")
+    # prevalence table
+    table <- svyby(formula = as.formula(paste0("~",outcome_variable)),
+                   by= as.formula(paste0("~",category)),
+                   design = sub.survey_data,
+                   FUN = svyciprop ,
+                   method = "beta",
+                   vartype = "ci",
+                   df=25
+                   )
+    # formating table
+    table <- table |>
+      rename(Category = category,
+             Indicator_Value=outcome_variable) |>
+      mutate(
+             Indicator_Value = Indicator_Value * 100,
+             Indicator = outcome_variable,
+             ci_l = ci_l * 100,
+             ci_u = ci_u * 100,
+             Characteristic = category,
+             Category = as.character(Category),
+             Year=year) |>
+      select(Characteristic,
+             Category,
+             Year,
+             Indicator,
+             Indicator_Value,
+             ci_l,
+             ci_u)
+
+    prev_list[[category]] <- table
+  }
+  
+  return(bind_rows(prev_list))
+  
+}
+
+```
+
+```{}
+# Prevalence
+prevalence = make_prev_table(
+  outcome_variable = "hivstatusfinal",
+  variaveis = characteristics,
+  year = "2021",
+  survey_data = jkdesign
+)
+
+# Viral loading supression
+vls = make_prev_table(
+  outcome_variable = "vls",
+  variaveis = characteristics,
+  year = "2021",
+  survey_data = jkdesign
+)
+
+# awareness of hiv status
+tri90aware = make_prev_table(
+  outcome_variable = "tri90aware",
+  variaveis = characteristics,
+  year = "2021",
+  survey_data = subset(jkdesign, tri90 == 1)
+)
+
+# aware and on art
+tri90art = make_prev_table(
+  outcome_variable = "tri90art",
+  variaveis = characteristics,
+  year = "2021",
+  survey_data = subset(jkdesign, tri90 == 1 & tri90aware == 1)
+)
+
+# aware, on art and with vls
+tri90vls = make_prev_table(
+  outcome_variable = "tri90vls",
+  variaveis = characteristics,
+  year = "2021",
+  survey_data = subset(jkdesign, tri90 == 1 & tri90aware == 1 & tri90art == 1)
+)
+
+base_indicators = bind_rows(prevalence, vls, tri90aware, tri90art, tri90vls)
+write.csv(base_indicators, "./hiv_indicators.csv")
+base_indicators
+
+```
+
+--------------------------------------------------------------------------------
+
+
+```{r}
+
+# Multiple Prevalence Estimation Function 
+
+prev_list <- list()
+
+make_prev_table <- function(outcome_variable ,variaveis, year, gender, age, survey_data){
+  
+  for(category in variaveis){
+    valid_rows <- !is.na(survey_data$variables[, outcome_variable])             # Its important to remove NA of the response variables
+    sub.survey_data <- subset(survey_data, valid_rows)                          # This will remove NA of the response variable and weights 
+    
+    cat(category, "✔️\n")
+    # prevalence table
+    table <- svyby(formula = as.formula(paste0("~",outcome_variable)),
+                   by= as.formula(paste0("~",category)),
+                   design = sub.survey_data,
+                   FUN = svyciprop ,
+                   method = "beta",
+                   vartype = "ci",
+                   df=25
+                   )
+    # formating table
+    table <- table |>
+      rename(Category = category,
+             Indicator_Value=outcome_variable) |>
+      mutate(
+             Indicator_Value = round(Indicator_Value * 100, 1),
+             Indicator = outcome_variable,
+             CI_l = round(ci_l * 100,1),
+             CI_u = round(ci_u * 100,1),
+             Gender = gender,
+             Age_Group = age,
+             Characteristic = category,
+             Category = as.character(Category),
+             Year=year) |>
+      select(Characteristic,
+             Category,
+             Year,
+             Gender,
+             Age_Group,
+             Indicator,
+             Indicator_Value,
+             CI_l,
+             CI_u)
+
+    prev_list[[category]] <- table
+  }
+  
+  return(bind_rows(prev_list))
+  
+}
+
+```
+
+
+```{r}
+
+make_indicators_tables <- function(data, gender="both", year, age){
+  # Prevalence
+  prevalence = make_prev_table(
+    outcome_variable = "hivstatusfinal",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = data
+  )
+  
+  # Viral loading supression
+  vls = make_prev_table(
+    outcome_variable = "vls",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, hivstatusfinal==1)
+  )
+  
+  # aware 
+  tri90aware = make_prev_table(
+    outcome_variable = "tri90aware",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data,  tri90 == 1)
+  )
+  
+  # aware and on art
+  tri90art = make_prev_table(
+    outcome_variable = "tri90art",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, tri90 == 1 & tri90aware == 1)
+  )
+  
+  # aware, on art and with vls
+  tri90vls = make_prev_table(
+    outcome_variable = "tri90vls",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, tri90 == 1 & tri90aware == 1 & tri90art == 1)
+  )
+  
+  base_indicators = bind_rows(prevalence, vls, tri90aware, tri90art, tri90vls)
+  
+  return(base_indicators)
+}
+
+```
+
+
+```{r}
+
+key_indicators_by_age_group <- function(data, age, year){
+ 
+   key_indicators <- make_indicators_tables(data = data,
+                                                year = year,
+                                                gender = "both",
+                                                age = age
+                                                )
+  
+  key_indicators_Woman <-make_indicators_tables(
+    data = subset(data, sex == "Female"),
+    year = year,
+    gender = "Woman",
+    age = age
+  )
+  
+  key_indicators_Man <- make_indicators_tables(
+    data = subset(data, sex == "Male"),
+    year = year,
+    gender = "Man",
+    age = age
+  )
+  
+
+  
+  key_indicators <- bind_rows(
+    key_indicators,
+    key_indicators_Man,
+    key_indicators_Woman)
+  
+  return(key_indicators)
+  
+}
+
+```
+
+
+
+```{r}
+
+indicator_15 <- key_indicators_by_age_group(age = "15+", year = "2021", data = tsdesign)
+indicator_15_49 <- key_indicators_by_age_group(age = "15-49", year = "2021", data = subset(tsdesign, age >= 15 & age <= 49))
+indicator_15_24 <- key_indicators_by_age_group(age = "15-24", year = "2021", data = subset(tsdesign, age >= 15 & age <= 24))
+indicators <- bind_rows(indicator_15_49, indicator_15_24 ,indicator_15)
+ 
+indicators
+
+write.csv(indicators, "./Tables/key_indicators_2021.csv")
+```
+
+```{r}
+filter(indicator_15, Characteristic=="country")
+```
+
+
+```{r}
+rm(list = c("tri90aware", "tri90art", "tri90vls"))
+```

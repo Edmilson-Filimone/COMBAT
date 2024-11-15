@@ -1,0 +1,566 @@
+---
+title: "HIV key indicators 2009/2015 - DHS"
+author: "Edmilson Filimone"
+---
+
+# Packages
+```{r}
+library(dplyr)
+library(survey)
+library(haven)
+```
+
+# Loading Data
+```{r}
+
+setwd("D:/Code/AIDS/PHIA/DHS")
+
+# 2015
+IR2015 <- read_sav("./Data/IR2015.SAV")
+MR2015 <- read_sav("./Data/MR2015.SAV")
+AR2015 <- read_sav("./Data/AR2015.SAV")
+
+# 2009
+IR2009 <- read_sav("./Data/IR2009.SAV")
+#MR2009 <- read_sav("./DHS/Data/MR2009.SAV") does not exist
+AR2009 <- read_sav("./Data/AR2009.SAV")
+
+```
+
+# Variables
+```{r}
+
+variables <-c( 
+    "V106",
+    "V012",
+    "V501",
+    "V190",
+    "V024",
+    "V025",
+    "V714",
+    "V130",
+    "V021",
+    "V022",
+    "Self_reported_HIV",
+    "Self_reported_ARV",
+    "pregnancy",
+    "sex",
+    "SVIRAL",
+    "HIV03",
+    "HIV05",
+    "SVIRAL",
+    "SBIOARV")
+
+
+# Missing variables in 2009 DHS
+variables_2009 <-c( 
+    "Self_reported_HIV",
+    "Self_reported_ARV",
+    "SVIRAL",
+    "SBIOARV"
+    )
+
+```
+
+
+
+# Merge Data Sets
+
+
+```{r}
+
+merge_all_datasets <- function(IR, MR, AR, year){
+  
+  # add sex column
+  IR[["sex"]] = "Female"
+  MR[["sex"]] = "Male"
+  
+  # Pregnancy status
+  IR[["pregnancy"]] <- if_else(is.na(IR$V214), "No", "Yes")
+  MR[["pregnancy"]] <- "No" 
+  
+  # merge IR & AR
+  IR_AR <- merge(IR, AR, by.x = c("V001", "V002", "V003"), by.y = c("HIVCLUST", "HIVNUMB", "HIVLINE"))
+  IR_AR[["Self_reported_HIV"]] <- IR_AR$SSELFHIV # rename for merge (MR_AR and IR_AR should have the same variables name)
+  IR_AR[["Self_reported_ARV"]] <- IR_AR$S719
+  
+  if(year == 2009){
+    IR_AR[,variables_2009] <- NA
+    IR_AR[,"sex"] <- IR_AR$AIDSEX # sex for 2009
+    return(IR_AR[,variables])}
+  
+  # merge MR & AR
+  MR_AR <- merge(MR, AR, by.x = c("MV001", "MV002", "MV003"), by.y = c("HIVCLUST", "HIVNUMB", "HIVLINE"))
+  MR_AR[["Self_reported_HIV"]] <- MR_AR$SMSELFHIV  # rename for merge (MR_AR and IR_AR should have the same variables name)
+  MR_AR[["Self_reported_ARV"]] <- MR_AR$SM519
+  
+  # rename MR_AR variables to match with IR_AR columns
+  names(MR_AR) <-  stringr::str_remove(names(MR_AR), "M") # Warning it gonna remove all "M" in the name of the columns
+                                                       # uma vez que nao temos nenhuma variavel de interesse com "M" it oky
+  
+  
+  # Selecting Variables
+  MR_AR <- MR_AR |>
+      select(variables)
+  
+    IR_AR <- IR_AR |>
+      select(variables)
+    
+# Join IR_AR and MR_IR
+
+DATA <- bind_rows(MR_AR, IR_AR)
+
+return(DATA)
+    
+}
+
+
+```
+
+```{r}
+
+raw_data_2009 <- merge_all_datasets(IR = IR2009, MR = NULL, AR = AR2009, year = 2009)
+raw_data_2015 <- merge_all_datasets(IR = IR2015, MR = MR2015, AR = AR2015, year = 2015)
+
+```
+
+
+
+# Data cleaning 
+```{r}
+# Sociodemographic variables
+recode_variables <- function(ids_data){
+     
+      
+  ids_data <-  ids_data |>
+  mutate(age_group = car::recode(as.numeric(V012),
+                                 "15:24='15-24'; 
+                                  25:34='25-34'; 
+                                  35:44='35-44'; 
+                                  45:54='45-54'; 
+                                  else='55+'"
+                                 ),
+         
+  marital_status = car::recode(as.numeric(V501),
+                                      "0='Never married';
+                                       c(1,2)='Married or living together';
+                                       4:5='Divorced or Separated';
+                                        3='Widowed'"),
+  
+  education = car::recode(as.numeric(V106),
+                                 "0='No education';
+                                 1='Primary';
+                                 2:3='Secondary/above'"),
+  
+  occupation = car::recode(as.numeric(V714),
+                                  "0='Unemployed';
+                                  1='Employed'"),
+  
+  
+  religion = car::recode(as.numeric(V130), 
+                         "1='Catholic'; 
+                         2='Islamic'; 
+                         3:5='Protestants';
+                         c(6)='Others' "),
+  
+  province = car::recode(as.numeric(V024), 
+                       "1='Niassa'; 
+                        2='Cabo Delgado'; 
+                        3='Nampula'; 
+                        4='Zambezia'; 
+                        5='Tete'; 
+                        6='Manica'; 
+                        7='Sofala'; 
+                        8='Inhambane'; 
+                        9='Gaza'; 
+                        10='Maputo'; 
+                        11='Maputo City'"),
+  
+  area_of_residence = as_factor(V025),
+  wealth_index = as_factor(V190)
+  
+  ) 
+  
+
+
+# ids_data$age_group2[ids_data$V012 >= 15 & ids_data$V012 <= 24] <- "15-24"
+# ids_data$age_group2[ids_data$V012 >= 15 & ids_data$V012 <= 49] <- "15-49"
+# ids_data$age_group2[ids_data$V012 >= 50] <- "50+"
+  
+  
+# Adicionando a variavel regiao
+ids_data$region[ids_data$V024 < 4] <- "Northern"
+ids_data$region[ids_data$V024 > 3 & ids_data$V024 < 8] <- "Central"
+ids_data$region[ids_data$V024 > 7] <- "Southern"
+
+# country variable
+ids_data$country <- "Mozambique"
+
+# Ordenando as variaveis
+ids_data$age_group <- factor(ids_data$age_group, 
+                              level=c('15-24', 
+                                      '25-34', 
+                                      '35-44',
+                                      '45-54',
+                                      '55+'
+                                      ))
+
+ids_data$marital_status <- factor(ids_data$marital_status, 
+                                         c("Never married",
+                                           "Married or living together",  
+                                           "Divorced or separated",
+                                           "Widowed"))
+
+ids_data$education <- factor(ids_data$education, 
+                                    levels = c("No education", 
+                                               "Primary", 
+                                               "Secondary/above"))
+
+ids_data$occupation <- factor(ids_data$occupation, 
+                                     levels = c('Unemployed', 
+                                                'Employed'))
+
+
+ids_data$religion <- factor(ids_data$religion, 
+                            levels = c("Protestants",
+                                       "Catholic", 
+                                       "Islamic",
+                                       "Others"))
+
+ids_data$region <- factor(ids_data$region, 
+                          levels = c("Southern",
+                                     "Central", 
+                                     "Northern"))
+
+
+ids_data$province <- factor(ids_data$province, 
+                            levels = c("Niassa", 
+                                       "Cabo Delgado", 
+                                       "Nampula", 
+                                       "Zambezia",
+                                       "Tete", 
+                                       "Manica",
+                                       "Sofala", 
+                                       "Inhambane", 
+                                       "Gaza", 
+                                       "Maputo",
+                                       "Maputo City"))
+
+
+return(ids_data)
+}
+
+
+# Analytical Variables
+
+recode_analytic <- function(ids){
+  
+  ids$vls = as.numeric(ids$SVIRAL)
+  ids$vls[ids$vls == 9999999] <- NA
+  ids$vls[ids$vls < 1000] <- 1
+  ids$vls[ids$vls > 1000] <- 0
+  
+  
+  ids <- ids |> mutate(
+    hivstatusfinal = car::recode(as.numeric(HIV03), 
+                                 "0='0';
+                                 1:3='1'; 
+                                 else=NA"),
+          
+    Self_reported_HIV = car::recode(as.numeric(Self_reported_HIV), 
+                             "1='1';
+                             2='0';
+                             else=NA"),
+    Self_reported_ARV = car::recode(as.numeric(Self_reported_ARV),
+                                    "0='0';
+                                    1='1';
+                                    else=NA"),
+    arv = car::recode(as.numeric(SBIOARV),
+                      "0='0'; 
+                      1='1';
+                      else=NA"),
+    
+    tri90aware = case_when(
+      hivstatusfinal==1 & Self_reported_HIV==1 ~ 1,
+      hivstatusfinal==0 | Self_reported_HIV==1 ~ 1,
+    ),
+    tri90art = case_when(
+      tri90aware==1 & Self_reported_ARV  == 1 ~ 1,
+      tri90aware==0 | Self_reported_ARV == 0 ~ 0,
+      TRUE ~ NA
+    ),
+    tri90vls = case_when(
+      tri90aware==1 &  vls==1  ~ 1,
+      tri90aware==0 | vls == 0 ~ 0,
+      TRUE ~ NA
+    )
+  )
+  return(ids)
+}
+
+
+```
+
+
+# Recoding variables
+```{r}
+
+data_2015 <- recode_variables(ids_data = raw_data_2015)
+data_2015 <- recode_analytic(data_2015)
+
+data_2009 <- recode_variables(ids_data = raw_data_2009)
+data_2009 <- recode_analytic(data_2009)
+
+#names(data_2015)[11:33]
+```
+
+# Recoded variables
+```{r}
+characteristics <- list(
+  "country",
+  "age_group",
+  "sex",
+  "marital_status",
+  "education",
+  "pregnancy", 
+  "occupation",
+  "wealth_index",
+  "area_of_residence",
+  "religion", 
+  "province", 
+  "region" 
+)
+
+analytics_variables <- c(
+  "hivstatusfinal",
+  "vls", 
+  "arv", 
+  "tri90aware", 
+  "tri90art", 
+  "tri90vls"
+)
+
+```
+
+
+# Weights and survey design
+
+```{r}
+data_2015$HIV05 <- data_2015$HIV05 / 1000000 
+data_2009$HIV05 <- data_2009$HIV05 / 1000000 
+
+survey.data.2015 <- svydesign(ids = ~V021, strata = ~V022, weights = ~HIV05, data = data_2015)
+survey.data.2009 <- svydesign(ids = ~V021, strata = ~V022, weights = ~HIV05, data = data_2009)
+
+```
+
+
+# Prevalence/Proportion Estimation
+
+```{r}
+
+# Multiple Prevalence Estimation Function 
+
+prev_list <- list()
+
+make_prev_table <- function(outcome_variable ,variaveis, year, gender, age, survey_data){
+  
+  for(category in variaveis){
+    valid_rows <- !is.na(survey_data$variables[, outcome_variable])             # Its important to remove NA of the response variables
+    sub.survey_data <- subset(survey_data, valid_rows)                          # This will remove NA of the response variable and weights 
+    
+    cat(category, "✔️\n")
+    # prevalence table
+    table <- svyby(formula = as.formula(paste0("~",outcome_variable)),
+                   by= as.formula(paste0("~",category)),
+                   design = sub.survey_data,
+                   FUN = svyciprop ,
+                   method = "logit",
+                   vartype = "ci"
+                   )
+    # formating table
+    table <- table |>
+      rename(Category = category,
+             Indicator_Value=outcome_variable) |>
+      mutate(
+             Indicator_Value = round(Indicator_Value * 100, 1),
+             Indicator = outcome_variable,
+             CI_l = round(ci_l * 100,1),
+             CI_u = round(ci_u * 100,1),
+             Gender = gender,
+             Age_Group = age,
+             Characteristic = category,
+             Category = as.character(Category),
+             Year=year) |>
+      select(Characteristic,
+             Category,
+             Year,
+             Gender,
+             Age_Group,
+             Indicator,
+             Indicator_Value,
+             CI_l,
+             CI_u)
+
+    prev_list[[category]] <- table
+  }
+  
+  return(bind_rows(prev_list))
+  
+}
+
+```
+
+
+```{r}
+make_indicators_tables <- function(data, gender="both", year, age){
+  # Prevalence
+  prevalence = make_prev_table(
+    outcome_variable = "hivstatusfinal",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = data
+  )
+  
+  # Viral loading supression
+  vls = make_prev_table(
+    outcome_variable = "vls",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, hivstatusfinal==1)
+  )
+  
+  # aware 
+  tri90aware = make_prev_table(
+    outcome_variable = "tri90aware",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = data
+  )
+  
+  # aware and on art
+  tri90art = make_prev_table(
+    outcome_variable = "tri90art",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, tri90aware == 1)
+  )
+  
+  # aware, on art and with vls
+  tri90vls = make_prev_table(
+    outcome_variable = "tri90vls",
+    variaveis = characteristics,
+    year = year,
+    gender = gender,
+    age = age,
+    survey_data = subset(data, tri90aware == 1 & tri90art == 1)
+  )
+  
+  base_indicators = bind_rows(prevalence, vls, tri90aware, tri90art, tri90vls)
+  
+  return(base_indicators)
+}
+
+```
+
+
+```{r}
+key_indicators_by_age_group <- function(data2015, data2009, age){
+  key_indicators_2015 <- make_indicators_tables(data = data2015,
+                                                year = "2015",
+                                                gender = "both",
+                                                age = age
+                                                )
+  
+  key_indicators_2015_Woman <-make_indicators_tables(
+    data = subset(data2015, sex == "Female"),
+    year = "2015",
+    gender = "Woman",
+    age = age
+  )
+  
+  key_indicators_2015_Man <- make_indicators_tables(
+    data = subset(data2015, sex == "Male"),
+    year = "2015",
+    gender = "Man",
+    age = age
+  )
+  
+  key_indicators_2009 <- make_prev_table(
+    outcome_variable = "hivstatusfinal",
+    variaveis = characteristics,
+    year = "2009",
+    gender = "both",
+    age = age,
+    survey_data = data2009
+  )
+  
+  key_indicators_2009_Woman <- make_prev_table(
+    outcome_variable = "hivstatusfinal",
+    variaveis = characteristics,
+    year = "2009",
+    gender = "Woman",
+    age = age,
+    survey_data = subset(data2009, sex==2)
+  )
+  
+  key_indicators_2009_Man <- make_prev_table(
+    outcome_variable = "hivstatusfinal",
+    variaveis = characteristics,
+    year = "2009",
+    gender = "Man",
+    age = age,
+    survey_data = subset(data2009, sex==1)
+  )
+  
+  key_indicators <- bind_rows(
+    key_indicators_2015,
+    key_indicators_2015_Man,
+    key_indicators_2015_Woman,
+    key_indicators_2009,
+    key_indicators_2009_Man,
+    key_indicators_2009_Woman
+  )
+  
+  return(key_indicators)
+  
+}
+
+```
+
+
+```{r}
+
+indicator_15 <- key_indicators_by_age_group(age = "15+", 
+                                            data2009 = survey.data.2009, 
+                                            data2015 = survey.data.2015)
+
+indicator_15_24 <- key_indicators_by_age_group(age = "15-24", 
+                                               data2009 = subset(survey.data.2009, V012 >= 15 & V012 <= 24), 
+                                               data2015 = subset(survey.data.2015, V012 >= 15 & V012 <= 24))
+
+
+
+indicator_15_49 <- key_indicators_by_age_group(age = "15-49", 
+                                               data2009 = subset(survey.data.2009, V012 >= 15 & V012 <= 49), 
+                                               data2015 = subset(survey.data.2015, V012 >= 15 & V012 <= 49))
+
+
+indicators <- bind_rows(indicator_15_49, indicator_15_24 ,indicator_15)
+
+write.csv(indicators, "./Tables/key_indicators_2009_2015.csv")
+
+indicators
+
+```
+
+
+
